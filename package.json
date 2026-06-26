@@ -1,0 +1,26 @@
+{
+  "name": "jira-cli",
+  "version": "1.0.0",
+  "description": "Read-only Jira Server/Data Center CLI built for agentic workflows.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "jira": "src/cli.ts"
+  },
+  "scripts": {
+    "dev": "bun run src/cli.ts",
+    "build": "bun build --compile src/cli.ts --outfile jira"
+  },
+  "dependencies": {
+    "ansis": "^3.17.0",
+    "citty": "^0.1.6",
+    "turndown": "^7.2.2",
+    "yocto-spinner": "^0.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/turndown": "^5.0.5",
+    "bun-types": "^1.3.9",
+    "typescript": "^5.7.0"
+  }
+}

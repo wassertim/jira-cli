@@ -1,0 +1,7 @@
+node_modules/
+tickets/
+jira
+bun.lockb
+package-lock.json
+.claude/plans/
+.claude/settings.local.json
