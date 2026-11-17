@@ -1,5 +1,5 @@
 import ansis from "ansis";
-import type { JiraTicket, JiraListItem } from "../types.js";
+import type { JiraTicket, JiraListItem, JiraIssueRef } from "../types.js";
 import { JIRA_URL } from "./jira-client.js";
 import { bold, dim, highlight, info, link, success } from "./ui.js";
 
@@ -9,19 +9,63 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleString("de-CH");
+}
+
+function issueUrl(key: string): string {
+  return `${JIRA_URL}/browse/${key}`;
+}
+
+function prettyRef(ref: JiraIssueRef): string {
+  return `${link(highlight(ref.key), issueUrl(ref.key))}  ${ref.summary}  ${dim(`${ref.type}, ${ref.status}`)}`;
+}
+
 function prettyTicket(ticket: JiraTicket): string {
   const lines: string[] = [];
 
   lines.push(
-    `  ${bold(highlight(ticket.key))}  ${bold(ticket.summary)}  ${dim(ticket.status)}`
+    `  ${bold(link(highlight(ticket.key), ticket.url))}  ${bold(ticket.summary)}  ${dim(ticket.status)}`
   );
 
-  if (ticket.assignee) {
-    lines.push(`  ${dim("Assignee:")} ${ticket.assignee}`);
-  }
+  // Metadata: label/value pairs, several per line; empty values are skipped
+  const row = (...pairs: [string, string | null | undefined][]) => {
+    const shown = pairs.filter(([, v]) => v);
+    if (shown.length > 0) {
+      lines.push("  " + shown.map(([k, v]) => `${dim(`${k}:`)} ${v}`).join("   "));
+    }
+  };
+  row(["Type", ticket.type], ["Priority", ticket.priority], ["Resolution", ticket.resolution]);
+  row(["Assignee", ticket.assignee], ["Reporter", ticket.reporter]);
+  row(
+    ["Created", ticket.created && formatDate(ticket.created)],
+    ["Updated", ticket.updated && formatDate(ticket.updated)],
+    ["Resolved", ticket.resolved && formatDate(ticket.resolved)],
+    ["Due", ticket.due]
+  );
+  row(["Labels", ticket.labels.join(", ")], ["Components", ticket.components.join(", ")]);
+  row(
+    ["Fix versions", ticket.fixVersions.join(", ")],
+    ["Affects versions", ticket.affectsVersions.join(", ")]
+  );
+  row(["Sprint", ticket.sprints.map((s) => `${s.name} (${s.state})`).join(", ")]);
+  row(["Epic", ticket.epic && link(highlight(ticket.epic), issueUrl(ticket.epic))]);
+  row(["Parent", ticket.parent && prettyRef(ticket.parent)]);
 
   lines.push("");
   lines.push(ticket.description);
+
+  if (ticket.subtasks.length > 0) {
+    lines.push("");
+    lines.push(`  ${bold("Subtasks")}`);
+    for (const sub of ticket.subtasks) lines.push(`  ${prettyRef(sub)}`);
+  }
+
+  if (ticket.links.length > 0) {
+    lines.push("");
+    lines.push(`  ${bold("Links")}`);
+    for (const l of ticket.links) lines.push(`  ${dim(l.relation)}  ${prettyRef(l)}`);
+  }
 
   if (ticket.attachments.length > 0) {
     lines.push("");
@@ -38,8 +82,7 @@ function prettyTicket(ticket: JiraTicket): string {
     lines.push("");
     lines.push(`  ${bold("Comments")}`);
     for (const comment of ticket.comments) {
-      const date = new Date(comment.created).toLocaleString("de-CH");
-      lines.push(`  ${dim(`${date} — ${comment.author}`)}`);
+      lines.push(`  ${dim(`${formatDate(comment.created)} — ${comment.author}`)}`);
       lines.push(`  ${comment.body.replace(/\n/g, "\n  ")}`);
       lines.push("");
     }
@@ -171,7 +214,8 @@ export function outputList(
   total: number,
   mode: OutputMode
 ): void {
-  emit(prettyList(items, total), items, mode);
+  // `total` is the server-side match count; `count` < `total` means the list was cut off by --max
+  emit(prettyList(items, total), { total, count: items.length, issues: items }, mode);
 }
 
 export function outputTickets(tickets: JiraTicket[], mode: OutputMode): void {

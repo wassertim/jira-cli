@@ -59,6 +59,7 @@ export default defineCommand({
 
     const limit = args.comments ? parseInt(args.comments, 10) : undefined;
     const tickets: JiraTicket[] = [];
+    let failed = 0;
 
     for (const key of keys) {
       spin(`Fetching ${key}...`);
@@ -108,11 +109,15 @@ export default defineCommand({
         tickets.push(ticket);
       } catch (e) {
         fail(`${key}: ${e instanceof Error ? e.message : e}`);
+        failed++;
       }
     }
 
     if (tickets.length > 0) {
       outputTickets(tickets, modeFrom(args));
     }
+
+    // Non-zero exit if any key failed. exitCode (not exit()) so piped stdout is flushed first.
+    if (failed > 0) process.exitCode = 1;
   },
 });

@@ -38,7 +38,7 @@ Don't hardcode the token as plaintext in a dotfile; keep it in the secret manage
 ```bash
 jira issue view <KEY...>   # --comments <n> --plain --raw --save --dir <p>
 jira issue list            # -p -a -s -t -y -l -r -q --created --updated --order-by --reverse --mine --max
-jira sprint list [ID]      # -p --current --board --backlog --state --max
+jira sprint list [ID]      # -p --board-id --current --board --backlog --column --state --max
 jira board list            # -p
 jira project list
 jira me
@@ -46,8 +46,30 @@ jira open [KEY]
 jira show / jira list      # deprecated aliases for issue view / issue list
 ```
 
+`sprint list` uses the first board of `--project` unless you pass `--board-id`
+(the `rapidView=<id>` in the board URL). `--column <name>` keeps only the issues
+in that board column, for example the to-do column of the active sprint:
+
+```bash
+jira sprint list --board-id 42 --current --column 'To Do'
+```
+
 Output is pretty by default. `--plain` drops the colors, `--raw` (or `--json`)
 prints JSON.
+
+JSON shapes:
+
+- `issue view` prints one issue object (an array for several keys) with `key`,
+  `url`, `summary`, `type`, `status`, `resolution`, `priority`, `assignee`,
+  `reporter`, `created`, `updated`, `resolved`, `due`, `labels`, `components`,
+  `fixVersions`, `affectsVersions`, `epic`, `parent`, `subtasks`, `links`,
+  `sprints`, `description`, `attachments` and `comments`.
+- `issue list` and the issue views of `sprint list` print
+  `{ "total": <matches on the server>, "count": <returned>, "issues": [...] }`.
+  If `count` is smaller than `total`, the list was cut off by `--max`.
+
+`issue view` exits with status 1 if any of the keys could not be fetched; the
+issues that were fetched are still printed.
 
 ## Development
 

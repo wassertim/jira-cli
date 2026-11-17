@@ -26,7 +26,7 @@ function getHeaders(): Record<string, string> {
 
 export async function fetchIssue(key: string): Promise<RawJiraIssue> {
   const res = await fetch(
-    `${JIRA_URL}/rest/api/2/issue/${key}?expand=renderedFields`,
+    `${JIRA_URL}/rest/api/2/issue/${encodeURIComponent(key)}?expand=renderedFields,schema`,
     { headers: getHeaders() }
   );
 
@@ -86,6 +86,27 @@ export async function fetchBoardId(projectKey: string): Promise<number> {
   return boards[0].id;
 }
 
+/** Columns of a board with the status ids mapped to each (board configuration). */
+export async function fetchBoardColumns(
+  boardId: number
+): Promise<{ name: string; statusIds: string[] }[]> {
+  const res = await fetch(
+    `${JIRA_URL}/rest/agile/1.0/board/${boardId}/configuration`,
+    { headers: getHeaders() }
+  );
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Failed to fetch board ${boardId} configuration (HTTP ${res.status}): ${body}`);
+  }
+  const data = (await res.json()) as {
+    columnConfig?: { columns?: { name: string; statuses?: { id: string }[] }[] };
+  };
+  return (data.columnConfig?.columns ?? []).map((c) => ({
+    name: c.name,
+    statusIds: (c.statuses ?? []).map((st) => st.id),
+  }));
+}
+
 export async function fetchSprints(
   boardId: number,
   state = "active,future,closed"
@@ -139,12 +160,14 @@ export async function fetchProjects(): Promise<
 
 export async function fetchBoardIssues(
   boardId: number,
-  maxResults = 50
+  maxResults = 50,
+  jql?: string
 ): Promise<RawSearchResult> {
   const params = new URLSearchParams({
     maxResults: String(maxResults),
     fields: SEARCH_FIELDS,
   });
+  if (jql) params.set("jql", jql);
   const res = await fetch(
     `${JIRA_URL}/rest/agile/1.0/board/${boardId}/issue?${params}`,
     { headers: getHeaders() }
@@ -158,12 +181,14 @@ export async function fetchBoardIssues(
 
 export async function fetchBacklogIssues(
   boardId: number,
-  maxResults = 50
+  maxResults = 50,
+  jql?: string
 ): Promise<RawSearchResult> {
   const params = new URLSearchParams({
     maxResults: String(maxResults),
     fields: SEARCH_FIELDS,
   });
+  if (jql) params.set("jql", jql);
   const res = await fetch(
     `${JIRA_URL}/rest/agile/1.0/board/${boardId}/backlog?${params}`,
     { headers: getHeaders() }
@@ -200,12 +225,14 @@ export async function fetchSprintByName(
 
 export async function fetchSprintIssues(
   sprintId: number,
-  maxResults = 50
+  maxResults = 50,
+  jql?: string
 ): Promise<RawSearchResult> {
   const params = new URLSearchParams({
     maxResults: String(maxResults),
     fields: SEARCH_FIELDS,
   });
+  if (jql) params.set("jql", jql);
   const res = await fetch(
     `${JIRA_URL}/rest/agile/1.0/sprint/${sprintId}/issue?${params}`,
     { headers: getHeaders() }

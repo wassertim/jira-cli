@@ -1,5 +1,60 @@
 import TurndownService from "turndown";
-import type { RawJiraIssue, JiraTicket, JiraAttachment, JiraComment, JiraListItem } from "../types.js";
+import type {
+  RawJiraIssue,
+  RawIssueRef,
+  JiraTicket,
+  JiraAttachment,
+  JiraComment,
+  JiraListItem,
+  JiraIssueRef,
+  JiraIssueLink,
+  JiraSprint,
+} from "../types.js";
+import { JIRA_URL } from "./jira-client.js";
+
+const SPRINT_FIELD = "com.pyxis.greenhopper.jira:gh-sprint";
+const EPIC_LINK_FIELD = "com.pyxis.greenhopper.jira:gh-epic-link";
+
+/** Value of the custom field with the given type key (field ids differ per instance). */
+function customField(raw: RawJiraIssue, customType: string): unknown {
+  for (const [id, schema] of Object.entries(raw.schema ?? {})) {
+    if (schema.custom === customType) return raw.fields[id];
+  }
+  return undefined;
+}
+
+/**
+ * Jira Server returns sprints as serialized strings
+ * ("…Sprint@1a2b[id=12,name=Sprint 5,state=ACTIVE,…]"), newer versions as objects.
+ */
+function parseSprint(value: unknown): JiraSprint | null {
+  if (value && typeof value === "object") {
+    const o = value as { id?: unknown; name?: unknown; state?: unknown };
+    if (o.id === undefined) return null;
+    return {
+      id: Number(o.id),
+      name: String(o.name ?? ""),
+      state: String(o.state ?? "").toLowerCase(),
+    };
+  }
+  if (typeof value !== "string") return null;
+  const body = value.slice(value.indexOf("[") + 1, value.lastIndexOf("]"));
+  const id = body.match(/(?:^|,)id=(\d+)/)?.[1];
+  if (!id) return null;
+  // The name may itself contain commas — read up to the next ",key=" pair
+  const name = body.match(/(?:^|,)name=(.*?)(?=,[A-Za-z]+=|$)/)?.[1] ?? "";
+  const state = body.match(/(?:^|,)state=([^,]*)/)?.[1] ?? "";
+  return { id: Number(id), name, state: state.toLowerCase() };
+}
+
+function issueRef(ref: RawIssueRef): JiraIssueRef {
+  return {
+    key: ref.key,
+    summary: ref.fields.summary,
+    status: ref.fields.status.name,
+    type: ref.fields.issuetype.name,
+  };
+}
 
 export function formatListItem(raw: RawJiraIssue): JiraListItem {
   return {
@@ -65,11 +120,44 @@ export function formatIssue(raw: RawJiraIssue): JiraTicket {
     };
   });
 
+  const f = raw.fields;
+
+  const links: JiraIssueLink[] = (f.issuelinks ?? []).flatMap((l) => {
+    if (l.outwardIssue) return [{ relation: l.type.outward, ...issueRef(l.outwardIssue) }];
+    if (l.inwardIssue) return [{ relation: l.type.inward, ...issueRef(l.inwardIssue) }];
+    return [];
+  });
+
+  const rawSprints = customField(raw, SPRINT_FIELD);
+  const sprints = (Array.isArray(rawSprints) ? rawSprints : rawSprints ? [rawSprints] : [])
+    .map(parseSprint)
+    .filter((s): s is JiraSprint => s !== null);
+
+  const epic = customField(raw, EPIC_LINK_FIELD);
+
   return {
     key: raw.key,
-    summary: raw.fields.summary,
-    status: raw.fields.status.name,
-    assignee: raw.fields.assignee?.displayName ?? null,
+    url: `${JIRA_URL}/browse/${raw.key}`,
+    summary: f.summary,
+    type: f.issuetype.name,
+    status: f.status.name,
+    resolution: f.resolution?.name ?? null,
+    priority: f.priority?.name ?? null,
+    assignee: f.assignee?.displayName ?? null,
+    reporter: f.reporter?.displayName ?? null,
+    created: f.created ?? "",
+    updated: f.updated ?? "",
+    resolved: f.resolutiondate ?? null,
+    due: f.duedate ?? null,
+    labels: f.labels ?? [],
+    components: (f.components ?? []).map((c) => c.name),
+    fixVersions: (f.fixVersions ?? []).map((v) => v.name),
+    affectsVersions: (f.versions ?? []).map((v) => v.name),
+    epic: typeof epic === "string" && epic ? epic : null,
+    parent: f.parent ? issueRef(f.parent) : null,
+    subtasks: (f.subtasks ?? []).map(issueRef),
+    links,
+    sprints,
     description,
     attachments,
     comments,

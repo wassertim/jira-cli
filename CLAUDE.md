@@ -65,7 +65,8 @@ subcommands, short flags, `--plain`/`--raw` output modes. Read-only.
 jira issue view <KEY...>   # --comments <n> --plain --raw --save --dir <p>
 jira issue list            # -p -a -s -t -y -l -r -q --created --updated
                            # --order-by --reverse --mine --plain --raw --max <n>
-jira sprint list [ID]      # -p --current --board --backlog --state --plain --raw --max
+jira sprint list [ID]      # -p --board-id --current --board --backlog --column
+                           # --state --plain --raw --max
 jira board list            # -p --plain --raw
 jira project list          # --plain --raw
 jira me                    # --raw
@@ -83,6 +84,7 @@ jira issue view PROJ-123 PROJ-124        # multiple keys
 jira issue list -p PROJ --mine
 jira issue list -p PROJ -s '~Done' -t Bug # negate status with ~ (quote it for the shell!)
 jira sprint list -p PROJ --current
+jira sprint list --board-id 42 --current --column 'To Do'  # one board column of the active sprint
 jira project list
 ```
 
@@ -114,4 +116,19 @@ bun run build                # compile standalone binary → ./jira
 - **stderr for all progress** (spinners, status messages) — stdout is always clean data
 - **`--save` is opt-in** — by default nothing is written to disk, just stdout
 - **Multiple ticket keys in one call** — returns JSON array when multiple
+- **Board selection** — `--board-id` wins over `--project`; `--project` alone means the
+  project's first board (a project can have several).
+- **`--column`** — a board column is a set of statuses (board configuration). The name is
+  matched case-insensitively (exact, else unique substring) and turned into a
+  `status in (<ids>)` JQL clause on the agile issue endpoints. Needs a board, so with a
+  numeric sprint id it requires `--board-id` or `--project`.
+- **`issue view` exit code** — 1 if any key failed (fetched issues are still printed).
+  Set via `process.exitCode`, not `process.exit()`, so piped stdout is flushed.
+- **List JSON is an envelope** — `{ total, count, issues }` for `issue list` and the
+  issue views of `sprint list`; `count < total` means the result was cut off by `--max`.
+- **`issue view` fields** — besides summary/status/description/attachments/comments it
+  returns type, priority, resolution, reporter, dates, labels, components, versions,
+  `epic` (key), `parent`, `subtasks`, `links` and `sprints`. Sprint and Epic Link are
+  custom fields whose ids differ per instance; they are located via `expand=schema`
+  (custom type `gh-sprint` / `gh-epic-link`), never by hardcoded id.
 - **Back-compat:** `jira show` / `jira list` remain as deprecated aliases
